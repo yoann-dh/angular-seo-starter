@@ -1,0 +1,33 @@
+image: docker:git
+services:
+  - docker:dind
+
+variables:
+  RELEASE_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+stages:
+  - build
+  - deploy
+
+build:
+  stage: build
+  only:
+    - master
+  script:
+    - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN $CI_REGISTRY
+    - docker build -t $RELEASE_IMAGE .
+    - docker push $RELEASE_IMAGE
+
+deploy:
+  stage: deploy
+  image: dtzar/helm-kubectl
+  script:
+    - kubectl config set-cluster k8s --server="${K8S_SERVER}"
+    - kubectl config set clusters.k8s.certificate-authority-data ${CERTIFICATE_AUTHORITY_DATA}
+    - kubectl config set-credentials gitlab --token="${USER_TOKEN}"
+    - kubectl config set-context default --cluster=k8s --user=gitlab
+    - kubectl config use-context default
+    - kubectl get pods -A
+    - kubectl set image deployment ${SERVICE_NAME} ${SERVICE_NAME}=$RELEASE_IMAGE --namespace ${NAMESPACE}
+  only:
+    - master
+  when: manual
